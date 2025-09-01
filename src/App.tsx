@@ -5,22 +5,31 @@ import { ProteinOutput } from './components/ProteinOutput'
 import { TranslatorAnimation } from './components/TranslatorAnimation'
 import { Protein3DViewer } from './components/Protein3DViewer'
 import { SequenceGraphics } from './components/SequenceGraphics'
-import { parseFasta, sanitizeDNA, translateDNA, toCodons } from './utils/translation'
+import { parseFasta, sanitizeDNA, translateDNA, toCodons, detectSequenceType } from './utils/translation'
 
 export default function App() {
   const [dna, setDna] = useState('')
   const [useThreeLetter, setUseThreeLetter] = useState(false)
   const [activeCodonIndex, setActiveCodonIndex] = useState<number | null>(null)
+  const [warning, setWarning] = useState<string | null>(null)
 
   const codons = useMemo(() => toCodons(sanitizeDNA(dna)), [dna])
 
   const protein = useMemo(() => translateDNA(sanitizeDNA(dna)), [dna])
 
-  const handleTextInput = (text: string) => setDna(sanitizeDNA(text))
+  const handleTextInput = (text: string) => {
+    setWarning(null)
+    const type = detectSequenceType(text)
+    if (type === 'protein') setWarning('It looks like you pasted a protein FASTA (amino-acid letters). Please provide DNA (A/T/G/C).')
+    setDna(sanitizeDNA(text))
+  }
   const handleFile = async (file: File) => {
     const text = await file.text()
     const isFasta = file.name.toLowerCase().endsWith('.fasta') || text.startsWith('>')
     const seq = isFasta ? parseFasta(text) : text
+    setWarning(null)
+    const type = detectSequenceType(seq)
+    if (type === 'protein') setWarning('It looks like you uploaded a protein FASTA. Please upload DNA (nucleotide sequence).')
     setDna(sanitizeDNA(seq))
   }
 
@@ -41,6 +50,9 @@ export default function App() {
       <main className="max-w-6xl mx-auto w-full px-4 py-6 grid grid-cols-1 lg:grid-cols-2 gap-6">
         <section className="space-y-4">
           <DNAInput onTextChange={handleTextInput} onFileSelected={handleFile} />
+          {warning && (
+            <div className="p-3 rounded border border-amber-300 bg-amber-50 text-amber-800 text-sm">{warning}</div>
+          )}
           <SequenceGraphics dna={sanitizeDNA(dna)} />
           <CodonHighlighter codons={codons} activeCodonIndex={activeCodonIndex} />
         </section>

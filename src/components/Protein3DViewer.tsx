@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 declare global {
   interface Window { $3Dmol?: any }
@@ -6,25 +6,56 @@ declare global {
 
 export function Protein3DViewer() {
   const divRef = useRef<HTMLDivElement | null>(null)
+  const [status, setStatus] = useState<'idle'|'loading'|'ready'|'error'>('idle')
 
   useEffect(() => {
-    if (!divRef.current || !window.$3Dmol) return
-    const viewer = window.$3Dmol.createViewer(divRef.current, { backgroundColor: 'white' })
-    // Placeholder small peptide (Alanine dipeptide) in PDB format
-    const pdb = `HEADER    ALA-ALA\nATOM      1  N   ALA A   1       0.000   1.204   0.000  1.00  0.00           N\nATOM      2  CA  ALA A   1       1.458   1.204   0.000  1.00  0.00           C\nATOM      3  C   ALA A   1       2.000  -0.200   0.000  1.00  0.00           C\nATOM      4  O   ALA A   1       1.200  -1.100   0.000  1.00  0.00           O\nTER\nEND\n`
-    viewer.addModel(pdb, 'pdb')
-    viewer.setStyle({}, { cartoon: { color: 'spectrum' }, stick: {} })
-    viewer.zoomTo()
-    viewer.render()
-    return () => {
-      try { viewer.clear(); } catch {}
+    let cancelled = false
+    async function ensure3Dmol() {
+      if (window.$3Dmol) return true
+      setStatus('loading')
+      try {
+        await new Promise((resolve, reject) => {
+          const script = document.createElement('script')
+          script.src = 'https://3dmol.org/build/3Dmol-min.js'
+          script.async = true
+          script.onload = () => resolve(true)
+          script.onerror = () => reject(new Error('Failed to load 3Dmol.js'))
+          document.head.appendChild(script)
+        })
+        return true
+      } catch {
+        return false
+      }
     }
+
+    async function init() {
+      if (!divRef.current) return
+      const ok = await ensure3Dmol()
+      if (!ok || cancelled || !divRef.current || !window.$3Dmol) { setStatus('error'); return }
+      const viewer = window.$3Dmol.createViewer(divRef.current, { backgroundColor: 'white' })
+      // Simple placeholder: two atoms connected, visible as spheres & sticks
+      const pdb = `HETATM    1  C1  LIG A   1       0.000   0.000   0.000  1.00  0.00           C\nHETATM    2  O1  LIG A   1       1.300   0.000   0.000  1.00  0.00           O\nCONECT    1    2\nEND\n`
+      viewer.addModel(pdb, 'pdb')
+      viewer.setStyle({}, { stick: { radius: 0.2 }, sphere: { radius: 0.5 } })
+      viewer.zoomTo()
+      viewer.render()
+      if (!cancelled) setStatus('ready')
+    }
+    init()
+    return () => { cancelled = true }
   }, [])
 
   return (
     <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-4">
       <h2 className="text-lg font-medium mb-3">3D Protein Viewer (placeholder)</h2>
-      <div ref={divRef} className="w-full h-64 border rounded" />
+      <div className="w-full h-64 border rounded relative overflow-hidden">
+        <div ref={divRef} className="absolute inset-0" />
+        {status !== 'ready' && (
+          <div className="absolute inset-0 flex items-center justify-center text-sm text-slate-500">
+            {status === 'loading' ? 'Loading 3D viewer…' : status === 'error' ? '3D viewer failed to load.' : 'Idle'}
+          </div>
+        )}
+      </div>
     </div>
   )
 }

@@ -59,3 +59,15 @@ export function translateDNA(seqRaw: string): { one: string; three: string } {
   const three = one.split('').map(a => ONE_TO_THREE[a] ?? '???').join('-')
   return { one, three }
 }
+
+// Heuristic: classify raw sequence as 'dna' if >=90% characters are A/T/G/C (ignoring whitespace)
+export function detectSequenceType(seqRaw: string): 'dna' | 'protein' | 'unknown' {
+  const s = (seqRaw || '').toUpperCase().replace(/\s/g, '')
+  if (!s) return 'unknown'
+  let atgc = 0
+  for (const ch of s) {
+    if (ch === 'A' || ch === 'T' || ch === 'G' || ch === 'C') atgc++
+  }
+  const ratio = atgc / s.length
+  return ratio >= 0.9 ? 'dna' : 'protein'
+}
