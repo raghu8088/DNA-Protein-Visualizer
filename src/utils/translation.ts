@@ -71,3 +71,20 @@ export function detectSequenceType(seqRaw: string): 'dna' | 'protein' | 'unknown
   const ratio = atgc / s.length
   return ratio >= 0.9 ? 'dna' : 'protein'
 }
+
+// Try to detect a PDB ID from a FASTA header line. We only trust explicit 'pdb' tags to avoid false positives.
+export function detectPdbIdFromFastaHeader(rawText: string): string | null {
+  const firstLine = (rawText.split('\n')[0] || '').trim()
+  if (!firstLine.startsWith('>')) return null
+  const header = firstLine
+  // Common patterns: pdb|1T15|, PDB:1T15, pdb 1T15
+  const patterns = [
+    /pdb\|([0-9][A-Za-z0-9]{3})\|/i,
+    /pdb[:\s]+([0-9][A-Za-z0-9]{3})/i,
+  ]
+  for (const re of patterns) {
+    const m = header.match(re)
+    if (m && m[1]) return m[1].toUpperCase()
+  }
+  return null
+}

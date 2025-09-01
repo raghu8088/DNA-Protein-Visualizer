@@ -4,9 +4,14 @@ declare global {
   interface Window { $3Dmol?: any }
 }
 
-export function Protein3DViewer() {
+export function Protein3DViewer({ initialPdbId }: { initialPdbId?: string }) {
   const divRef = useRef<HTMLDivElement | null>(null)
+  const viewerRef = useRef<any>(null)
   const [status, setStatus] = useState<'idle'|'loading'|'ready'|'error'>('idle')
+  const [err, setErr] = useState<string | null>(null)
+  const [pdbId, setPdbId] = useState(initialPdbId || '1T15') // Example BRCA1 BRCT domain
+  const [style, setStyle] = useState<'cartoon'|'stick'|'sphere'|'mix'>('cartoon')
+  const [color, setColor] = useState<'spectrum'|'chain'|'ss'|'white'>('spectrum')
 
   useEffect(() => {
     let cancelled = false
@@ -31,28 +36,113 @@ export function Protein3DViewer() {
     async function init() {
       if (!divRef.current) return
       const ok = await ensure3Dmol()
-      if (!ok || cancelled || !divRef.current || !window.$3Dmol) { setStatus('error'); return }
+      if (!ok || cancelled || !divRef.current || !window.$3Dmol) { setStatus('error'); setErr('Failed to initialize 3Dmol.js'); return }
       const viewer = window.$3Dmol.createViewer(divRef.current, { backgroundColor: 'white' })
-      // Simple placeholder: two atoms connected, visible as spheres & sticks
-      const pdb = `HETATM    1  C1  LIG A   1       0.000   0.000   0.000  1.00  0.00           C\nHETATM    2  O1  LIG A   1       1.300   0.000   0.000  1.00  0.00           O\nCONECT    1    2\nEND\n`
-      viewer.addModel(pdb, 'pdb')
-      viewer.setStyle({}, { stick: { radius: 0.2 }, sphere: { radius: 0.5 } })
-      viewer.zoomTo()
-      viewer.render()
-      if (!cancelled) setStatus('ready')
+      viewerRef.current = viewer
+      // Load initial example by PDB ID (from prop if provided)
+      try {
+        await loadByPdbId(initialPdbId || pdbId)
+      } catch (e: any) {
+        setStatus('error'); setErr(e?.message || 'Failed to load structure')
+      }
     }
     init()
     return () => { cancelled = true }
   }, [])
 
+  // If parent provides a new initialPdbId later, load it
+  useEffect(() => {
+    if (initialPdbId && viewerRef.current) {
+      setPdbId(initialPdbId)
+      loadByPdbId(initialPdbId).catch(e => { setStatus('error'); setErr(e?.message || 'Failed to load structure') })
+    }
+  }, [initialPdbId])
+
+  function applyStyle(v: any) {
+    const styleObj: any = {}
+    if (style === 'cartoon') styleObj.cartoon = { color }
+    else if (style === 'stick') styleObj.stick = { colorscheme: color, radius: 0.2 }
+    else if (style === 'sphere') styleObj.sphere = { colorscheme: color, radius: 0.8 }
+    else if (style === 'mix') {
+      styleObj.cartoon = { color }
+      styleObj.stick = { radius: 0.2, colorscheme: color }
+    }
+    v.setStyle({}, styleObj)
+  }
+
+  async function loadByPdbId(idRaw: string) {
+    setErr(null)
+    const v = viewerRef.current
+    if (!v || !window.$3Dmol) throw new Error('Viewer not ready')
+    const id = (idRaw || '').trim()
+    if (!id) throw new Error('Enter a PDB ID')
+    setStatus('loading')
+    v.clear()
+    await new Promise<void>((resolve, reject) => {
+      try {
+        window.$3Dmol.download(`pdb:${id}`, v, {}, function() {
+          try {
+            applyStyle(v)
+            v.zoomTo()
+            v.render()
+            setStatus('ready')
+            resolve()
+          } catch (e) { reject(e) }
+        })
+      } catch (e) { reject(e) }
+    })
+  }
+
+  async function loadLocalFile(file: File) {
+    setErr(null)
+    const v = viewerRef.current
+    if (!v || !window.$3Dmol) throw new Error('Viewer not ready')
+    const ext = file.name.toLowerCase().endsWith('.cif') || file.name.toLowerCase().endsWith('.mmcif') ? 'mmcif' : 'pdb'
+    const text = await file.text()
+    setStatus('loading')
+    v.clear()
+    v.addModel(text, ext)
+    applyStyle(v)
+    v.zoomTo()
+    v.render()
+    setStatus('ready')
+  }
+
   return (
     <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-4">
-      <h2 className="text-lg font-medium mb-3">3D Protein Viewer (placeholder)</h2>
-      <div className="w-full h-64 border rounded relative overflow-hidden">
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="text-lg font-medium">3D Protein Viewer</h2>
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          <input
+            className="border rounded px-2 py-1 w-28"
+            placeholder="PDB ID"
+            value={pdbId}
+            onChange={(e)=>setPdbId(e.target.value)}
+          />
+          <button className="px-2 py-1 rounded border" onClick={()=>loadByPdbId(pdbId)}>Load</button>
+          <label className="px-2 py-1 rounded border cursor-pointer">
+            Upload PDB/mmCIF
+            <input type="file" className="hidden" accept=".pdb,.cif,.mmcif" onChange={(e)=>{const f=e.target.files?.[0]; if (f) loadLocalFile(f)}} />
+          </label>
+          <select className="border rounded px-2 py-1" value={style} onChange={(e)=>{ setStyle(e.target.value as any); const v=viewerRef.current; if(v){ applyStyle(v); v.render() } }}>
+            <option value="cartoon">Cartoon</option>
+            <option value="stick">Stick</option>
+            <option value="sphere">Spheres</option>
+            <option value="mix">Cartoon+Stick</option>
+          </select>
+          <select className="border rounded px-2 py-1" value={color} onChange={(e)=>{ setColor(e.target.value as any); const v=viewerRef.current; if(v){ applyStyle(v); v.render() } }}>
+            <option value="spectrum">Spectrum</option>
+            <option value="chain">Chain</option>
+            <option value="ss">Secondary</option>
+            <option value="white">White</option>
+          </select>
+        </div>
+      </div>
+      <div className="w-full h-80 border rounded relative overflow-hidden">
         <div ref={divRef} className="absolute inset-0" />
         {status !== 'ready' && (
           <div className="absolute inset-0 flex items-center justify-center text-sm text-slate-500">
-            {status === 'loading' ? 'Loading 3D viewer…' : status === 'error' ? '3D viewer failed to load.' : 'Idle'}
+            {status === 'loading' ? 'Loading…' : status === 'error' ? (err || '3D viewer failed to load.') : 'Idle'}
           </div>
         )}
       </div>

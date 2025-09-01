@@ -5,13 +5,14 @@ import { ProteinOutput } from './components/ProteinOutput'
 import { TranslatorAnimation } from './components/TranslatorAnimation'
 import { Protein3DViewer } from './components/Protein3DViewer'
 import { SequenceGraphics } from './components/SequenceGraphics'
-import { parseFasta, sanitizeDNA, translateDNA, toCodons, detectSequenceType } from './utils/translation'
+import { parseFasta, sanitizeDNA, translateDNA, toCodons, detectSequenceType, detectPdbIdFromFastaHeader } from './utils/translation'
 
 export default function App() {
   const [dna, setDna] = useState('')
   const [useThreeLetter, setUseThreeLetter] = useState(false)
   const [activeCodonIndex, setActiveCodonIndex] = useState<number | null>(null)
   const [warning, setWarning] = useState<string | null>(null)
+  const [detectedPdb, setDetectedPdb] = useState<string | null>(null)
 
   const codons = useMemo(() => toCodons(sanitizeDNA(dna)), [dna])
 
@@ -19,6 +20,7 @@ export default function App() {
 
   const handleTextInput = (text: string) => {
     setWarning(null)
+    setDetectedPdb(detectPdbIdFromFastaHeader(text))
     const type = detectSequenceType(text)
     if (type === 'protein') setWarning('It looks like you pasted a protein FASTA (amino-acid letters). Please provide DNA (A/T/G/C).')
     setDna(sanitizeDNA(text))
@@ -28,6 +30,7 @@ export default function App() {
     const isFasta = file.name.toLowerCase().endsWith('.fasta') || text.startsWith('>')
     const seq = isFasta ? parseFasta(text) : text
     setWarning(null)
+    setDetectedPdb(detectPdbIdFromFastaHeader(text))
     const type = detectSequenceType(seq)
     if (type === 'protein') setWarning('It looks like you uploaded a protein FASTA. Please upload DNA (nucleotide sequence).')
     setDna(sanitizeDNA(seq))
@@ -59,7 +62,10 @@ export default function App() {
         <section className="space-y-4">
           <ProteinOutput proteinOne={protein.one} proteinThree={protein.three} useThreeLetter={useThreeLetter} />
           <TranslatorAnimation dna={sanitizeDNA(dna)} onActiveIndexChange={setActiveCodonIndex} onDone={()=>setActiveCodonIndex(null)} />
-          <Protein3DViewer />
+          {detectedPdb && (
+            <div className="text-xs text-slate-600 -mb-3">Detected PDB ID from FASTA header: <span className="font-mono">{detectedPdb}</span>. Preloading structure…</div>
+          )}
+          <Protein3DViewer initialPdbId={detectedPdb ?? undefined} />
         </section>
       </main>
       <footer className="text-center text-xs text-slate-500 py-6">
