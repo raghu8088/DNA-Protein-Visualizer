@@ -6,9 +6,10 @@ type Props = {
   dna: string
   onActiveIndexChange?: (i: number | null) => void
   onDone?: () => void
+  speedMs?: number
 }
 
-export function TranslatorAnimation({ dna, onActiveIndexChange, onDone }: Props) {
+export function TranslatorAnimation({ dna, onActiveIndexChange, onDone, speedMs = 600 }: Props) {
   // All codons from the entire sequence (for display)
   const codons = useMemo(() => toCodons(sanitizeDNA(dna)), [dna])
   // Compute the first ORF (start at first ATG, end at first stop)
@@ -52,7 +53,7 @@ export function TranslatorAnimation({ dna, onActiveIndexChange, onDone }: Props)
     onActiveIndexChange?.(i)
     const c = codons[i]
     const aa = translateCodonOne(c)
-    timerRef.current = window.setTimeout(() => {
+  timerRef.current = window.setTimeout(() => {
       // Stop codon reached: finish without appending '*'
       if (aa === '*') {
         setRunning(false)
@@ -62,7 +63,7 @@ export function TranslatorAnimation({ dna, onActiveIndexChange, onDone }: Props)
       }
       setBuilt(prev => [...prev, aa])
       setI(prev => prev + 1)
-    }, 600)
+  }, speedMs)
     return () => {
       if (timerRef.current) window.clearTimeout(timerRef.current)
     }

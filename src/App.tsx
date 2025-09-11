@@ -5,7 +5,8 @@ import { ProteinOutput } from './components/ProteinOutput'
 import { TranslatorAnimation } from './components/TranslatorAnimation'
 import { Protein3DViewer } from './components/Protein3DViewer'
 import { SequenceGraphics } from './components/SequenceGraphics'
-import { parseFasta, sanitizeDNA, translateDNA, toCodons, detectSequenceType, detectPdbIdFromFastaHeader } from './utils/translation'
+import { parseFasta, sanitizeDNA, translateDNA, toCodons, detectSequenceType, detectPdbIdFromFastaHeader, toCodonsFromFrame } from './utils/translation'
+import { AdvancedControls } from './components/AdvancedControls'
 
 export default function App() {
   const [dna, setDna] = useState('')
@@ -14,7 +15,11 @@ export default function App() {
   const [warning, setWarning] = useState<string | null>(null)
   const [detectedPdb, setDetectedPdb] = useState<string | null>(null)
 
-  const codons = useMemo(() => toCodons(sanitizeDNA(dna)), [dna])
+  const [frame, setFrame] = useState<0|1|2>(0)
+  const [strand, setStrand] = useState<'+'|'-'>('+')
+  const [speedMs, setSpeedMs] = useState(600)
+
+  const codons = useMemo(() => toCodonsFromFrame(sanitizeDNA(dna), frame, strand), [dna, frame, strand])
 
   const protein = useMemo(() => translateDNA(sanitizeDNA(dna)), [dna])
 
@@ -56,12 +61,13 @@ export default function App() {
           {warning && (
             <div className="p-3 rounded border border-amber-300 bg-amber-50 text-amber-800 text-sm">{warning}</div>
           )}
+          <AdvancedControls dna={sanitizeDNA(dna)} onFrameChange={setFrame} onStrandChange={setStrand} onSpeedChange={setSpeedMs} />
           <SequenceGraphics dna={sanitizeDNA(dna)} />
           <CodonHighlighter codons={codons} activeCodonIndex={activeCodonIndex} />
         </section>
         <section className="space-y-4">
           <ProteinOutput proteinOne={protein.one} proteinThree={protein.three} useThreeLetter={useThreeLetter} />
-          <TranslatorAnimation dna={sanitizeDNA(dna)} onActiveIndexChange={setActiveCodonIndex} onDone={()=>setActiveCodonIndex(null)} />
+          <TranslatorAnimation dna={sanitizeDNA(dna)} speedMs={speedMs} onActiveIndexChange={setActiveCodonIndex} onDone={()=>setActiveCodonIndex(null)} />
           {detectedPdb && (
             <div className="text-xs text-slate-600 -mb-3">Detected PDB ID from FASTA header: <span className="font-mono">{detectedPdb}</span>. Preloading structure…</div>
           )}

@@ -39,6 +39,18 @@ export function toCodons(seq: string): string[] {
   return codons
 }
 
+export function reverseComplement(seq: string): string {
+  const map: Record<string,string> = { A:'T', T:'A', G:'C', C:'G' }
+  return seq.split('').reverse().map(ch => map[ch] || '').join('')
+}
+
+export function toCodonsFromFrame(seqRaw: string, frame: 0|1|2, strand: '+'|'-'): string[] {
+  let seq = sanitizeDNA(seqRaw)
+  if (strand === '-') seq = reverseComplement(seq)
+  if (frame) seq = seq.slice(frame)
+  return toCodons(seq)
+}
+
 export function translateCodonOne(codon: string): string {
   return CODON_TABLE_ONE[codon] ?? '?'
 }
@@ -58,6 +70,52 @@ export function translateDNA(seqRaw: string): { one: string; three: string } {
   }
   const three = one.split('').map(a => ONE_TO_THREE[a] ?? '???').join('-')
   return { one, three }
+}
+
+export function translateFromFrame(seqRaw: string, frame: 0|1|2, strand: '+'|'-') {
+  let seq = sanitizeDNA(seqRaw)
+  if (strand === '-') seq = reverseComplement(seq)
+  if (frame) seq = seq.slice(frame)
+  const start = seq.indexOf(START)
+  if (start < 0) return { one: '', three: '' }
+  let one = ''
+  for (let i=start; i+2<seq.length; i+=3){
+    const c = seq.slice(i,i+3)
+    const aa = translateCodonOne(c)
+    if (aa === '*') break
+    one += aa
+  }
+  const three = one.split('').map(a => ONE_TO_THREE[a] ?? '???').join('-')
+  return { one, three }
+}
+
+export function codonUsage(seqRaw: string, frame: 0|1|2, strand: '+'|'-') {
+  const arr = toCodonsFromFrame(seqRaw, frame, strand)
+  const map: Record<string, number> = {}
+  for (const c of arr) map[c] = (map[c]||0)+1
+  return map
+}
+
+export function aaComposition(oneLetter: string) {
+  const map: Record<string, number> = {}
+  for (const a of oneLetter) map[a] = (map[a]||0)+1
+  return map
+}
+
+export function estimateProteinMW(oneLetter: string) {
+  // Average residue masses (approx, in Da)
+  const mass: Record<string, number> = {
+    A:89.09,R:174.20,N:132.12,D:133.10,C:121.16,Q:146.15,E:147.13,G:75.07,H:155.16,I:131.18,
+    L:131.18,K:146.19,M:149.21,F:165.19,P:115.13,S:105.09,T:119.12,W:204.23,Y:181.19,V:117.15
+  }
+  let total = 18.015 // add water once for termini approx
+  let prev: string | null = null
+  for (const a of oneLetter) {
+    if (!mass[a]) continue
+    total += mass[a] - 18.015 // subtract water for peptide bond
+    prev = a
+  }
+  return total // in Da
 }
 
 // Heuristic: classify raw sequence as 'dna' if >=90% characters are A/T/G/C (ignoring whitespace)
