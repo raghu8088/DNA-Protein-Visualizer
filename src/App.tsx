@@ -71,7 +71,7 @@ export default function App() {
           {detectedPdb && (
             <div className="text-xs text-slate-600 -mb-3">Detected PDB ID from FASTA header: <span className="font-mono">{detectedPdb}</span>. Preloading structure…</div>
           )}
-          <Protein3DViewer initialPdbId={detectedPdb ?? undefined} />
+          <Protein3DViewer initialPdbId={detectedPdb ?? undefined} proteinSeq={protein.one} />
         </section>
       </main>
       <footer className="text-center text-xs text-slate-500 py-6">

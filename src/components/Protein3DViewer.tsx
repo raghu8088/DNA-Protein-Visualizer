@@ -4,7 +4,7 @@ declare global {
   interface Window { $3Dmol?: any }
 }
 
-export function Protein3DViewer({ initialPdbId }: { initialPdbId?: string }) {
+export function Protein3DViewer({ initialPdbId, proteinSeq }: { initialPdbId?: string, proteinSeq?: string }) {
   const divRef = useRef<HTMLDivElement | null>(null)
   const viewerRef = useRef<any>(null)
   const [status, setStatus] = useState<'idle'|'loading'|'ready'|'error'>('idle')
@@ -12,6 +12,8 @@ export function Protein3DViewer({ initialPdbId }: { initialPdbId?: string }) {
   const [pdbId, setPdbId] = useState(initialPdbId || '1T15') // Example BRCA1 BRCT domain
   const [style, setStyle] = useState<'cartoon'|'stick'|'sphere'|'mix'>('cartoon')
   const [color, setColor] = useState<'spectrum'|'chain'|'ss'|'white'>('spectrum')
+  const [autoPredict, setAutoPredict] = useState(false)
+  const [predicting, setPredicting] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -108,6 +110,43 @@ export function Protein3DViewer({ initialPdbId }: { initialPdbId?: string }) {
     setStatus('ready')
   }
 
+  async function predictFromSequence(seq: string) {
+    if (!seq || seq.length < 20) throw new Error('Protein sequence too short for prediction')
+    const v = viewerRef.current
+    if (!v) throw new Error('Viewer not ready')
+    setStatus('loading'); setPredicting(true); setErr(null)
+    // Try ESMFold API (public). If blocked by CORS, user will need backend proxy.
+    const urls = [
+      'https://api.esmatlas.com/foldSequence/v1/pdb/',
+    ]
+    let lastErr: any = null
+    for (const url of urls) {
+      try {
+        const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: seq })
+        if (!res.ok) throw new Error(`Prediction failed (${res.status})`)
+        const pdb = await res.text()
+        v.clear()
+        v.addModel(pdb, 'pdb')
+        applyStyle(v)
+        v.zoomTo()
+        v.render()
+        setStatus('ready'); setPredicting(false)
+        return
+      } catch (e) {
+        lastErr = e
+      }
+    }
+    setPredicting(false)
+    throw lastErr || new Error('Prediction failed')
+  }
+
+  // Auto-predict when protein sequence changes and autoPredict is on
+  useEffect(() => {
+    if (!autoPredict || !proteinSeq) return
+    predictFromSequence(proteinSeq).catch((e:any)=>{ setStatus('error'); setErr(e?.message || 'Prediction failed (CORS or service)') })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [proteinSeq, autoPredict])
+
   return (
     <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-4">
       <div className="flex items-center justify-between mb-3">
@@ -136,6 +175,13 @@ export function Protein3DViewer({ initialPdbId }: { initialPdbId?: string }) {
             <option value="ss">Secondary</option>
             <option value="white">White</option>
           </select>
+          <label className="inline-flex items-center gap-1">
+            <input type="checkbox" checked={autoPredict} onChange={(e)=>setAutoPredict(e.target.checked)} />
+            Auto predict from sequence
+          </label>
+          <button className="px-2 py-1 rounded border" disabled={!proteinSeq || predicting} onClick={()=>{ if(proteinSeq) predictFromSequence(proteinSeq).catch((e:any)=>{ setStatus('error'); setErr(e?.message || 'Prediction failed') }) }}>
+            {predicting ? 'Predicting…' : 'Predict from Seq'}
+          </button>
         </div>
       </div>
       <div className="w-full h-80 border rounded relative overflow-hidden">
